@@ -1,1082 +1,1515 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile Banking BI Dashboard (Vietnam)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- Chosen Palette: Enterprise Indigo & Neutral Grays -->
-    <!-- Application Structure Plan: Chuyển đổi hoàn toàn sang bố cục báo cáo trang đơn (single-page report) theo phong cách Power BI được yêu cầu. Loại bỏ sidebar và tabs. Toàn bộ nội dung được đặt trên một trang, có thể cuộn. Cấu trúc bao gồm: 1. Header (Tiêu đề + Lọc ngày). 2. Lưới KPI chính. 3. Lưới KPI Giao dịch. 4. Lưới Biểu đồ chi tiết (tất cả biểu đồ). Cấu trúc này trực tiếp mô phỏng hình ảnh dashboard được cung cấp, ưu tiên mật độ thông tin và giao diện "báo cáo" chuyên nghiệp. -->
-    <!-- Visualization & Content Choices: Tất cả KPI và Biểu đồ được đóng gói trong 'report-card' mới. Mỗi thẻ có '.report-card-title' (thanh tiêu đề xám) và '.report-card-body' (nội dung) để khớp với phong cách yêu cầu. KPI được thiết kế lại để hiển thị số lớn, nổi bật, và thêm so sánh với kỳ trước. Biểu đồ (Canvas) nằm bên trong phần body của thẻ. -->
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
-    
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-        }
-        .report-card {
-            @apply bg-white shadow rounded-lg overflow-hidden;
-        }
-        .report-card-title {
-            @apply bg-gray-700 text-white text-sm font-semibold py-2 px-4;
-        }
-        .report-card-body {
-            @apply p-4;
-        }
-        .kpi-value-main {
-            @apply text-4xl lg:text-5xl font-bold text-gray-900;
-        }
-        .kpi-change {
-            @apply text-sm font-medium;
-        }
-
-        .chart-container {
-            position: relative;
-            width: 100%;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 300px;
-            max-height: 400px;
-        }
-        @media (min-width: 768px) {
-            .chart-container {
-                height: 350px;
-            }
-        }
-        .chart-container-tall {
-            position: relative;
-            width: 100%;
-            max-width: 900px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 350px;
-            max-height: 450px;
-        }
-        
-        .modal-overlay {
-            @apply fixed inset-0 bg-black bg-opacity-50 z-40 hidden justify-center items-center;
-        }
-        .modal-content {
-            @apply bg-white rounded-lg shadow-xl w-11/12 max-w-lg p-6 relative z-50;
-        }
-        .modal-header {
-            @apply flex justify-between items-center pb-3 border-b;
-        }
-        .modal-close {
-            @apply text-gray-500 hover:text-gray-800 text-3xl font-light;
-        }
-        .modal-body {
-            @apply my-4;
-        }
-        .loader {
-            @apply w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .gemini-button {
-            @apply bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors duration-200 shadow-sm;
-        }
-    </style>
-</head>
-<body class="text-gray-800">
-
-    <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col">
-        
-        <!-- Main Content -->
-        <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <!DOCTYPE html>
+        <html lang="vi">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Mobile Banking BI Dashboard (Vietnam)</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
             
-            <!-- Page Header -->
-            <header class="flex flex-col sm:flex-row justify-between sm:items-center mb-6">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">BI Dashboard: Mobile Banking</h1>
-                    <p class="text-gray-600">Báo cáo hiệu suất toàn diện</p>
-                </div>
-                <div class="mt-4 sm:mt-0">
-                    <label for="date-filter" class="sr-only">Lọc theo ngày</label>
-                    <select id="date-filter" class="w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
-                        <option value="30">30 ngày qua</option>
-                        <option value="7">7 ngày qua</option>
-                        <option value="90">90 ngày qua</option>
-                        <option value="all">Toàn thời gian</option>
-                    </select>
-                </div>
-            </header>
+            <!-- Chosen Palette: Enterprise Indigo & Neutral Grays -->
+            <!-- Application Structure Plan: Chuyển đổi hoàn toàn sang bố cục báo cáo trang đơn (single-page report) theo phong cách Power BI được yêu cầu. Loại bỏ sidebar và tabs. Toàn bộ nội dung được đặt trên một trang, có thể cuộn. Cấu trúc bao gồm: 1. Header (Tiêu đề + Lọc ngày). 2. Lưới KPI chính. 3. Lưới KPI Giao dịch. 4. Lưới Biểu đồ chi tiết (tất cả biểu đồ). Cấu trúc này trực tiếp mô phỏng hình ảnh dashboard được cung cấp, ưu tiên mật độ thông tin và giao diện "báo cáo" chuyên nghiệp. -->
+            <!-- Visualization & Content Choices: Tất cả KPI và Biểu đồ được đóng gói trong 'report-card' mới. Mỗi thẻ có '.report-card-title' (thanh tiêu đề xám) và '.report-card-body' (nội dung) để khớp với phong cách yêu cầu. KPI được thiết kế lại để hiển thị số lớn, nổi bật, và thêm so sánh với kỳ trước. Biểu đồ (Canvas) nằm bên trong phần body của thẻ. -->
+            <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+            
+            <style>
+                body {
+                    font-family: 'Inter', sans-serif;
+                    background-color: #f3f4f6;
+                }
+                .report-card {
+                    @apply shadow-lg rounded-xl overflow-hidden border-2 border-indigo-100 hover:border-indigo-300 hover:shadow-xl transition-all duration-300;
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    position: relative;
+                }
+                .report-card-title {
+                    @apply bg-gray-700 text-white text-sm font-semibold py-2 px-4;
+                }
+                .report-card-body {
+                    @apply p-4;
+                }
+                .kpi-value-main {
+                    @apply text-4xl lg:text-5xl font-bold text-gray-900;
+                }
+                .kpi-change {
+                    @apply text-sm font-medium;
+                }
 
-            <!-- Section: Overview KPIs -->
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Tổng quan KPI</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
-                <div class="report-card">
-                    <div class="report-card-title">Người dùng hoạt động (MAU)</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-mau-current">1.25M</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-green-600" id="kpi-mau-change">+5.2%</span>
-                            <span class="text-sm text-gray-500" id="kpi-mau-previous">vs 1.19M</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Người dùng mới (30 ngày)</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-newUsers-current">45,208</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-green-600" id="kpi-newUsers-change">+8.1%</span>
-                            <span class="text-sm text-gray-500" id="kpi-newUsers-previous">vs 41,820</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Tổng SL Giao dịch</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-totalTx-current">22.4M</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-green-600" id="kpi-totalTx-change">+12.5%</span>
-                            <span class="text-sm text-gray-500" id="kpi-totalTx-previous">vs 19.9M</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ GD thành công</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-successRate-current">99.1%</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-red-600" id="kpi-successRate-change">-0.2%</span>
-                            <span class="text-sm text-gray-500" id="kpi-successRate-previous">vs 99.3%</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Section: Transaction KPIs -->
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Hiệu suất Giao dịch</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ GD T.Công</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-txSuccess-current">99.1%</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-red-600" id="kpi-txSuccess-change">-0.2%</span>
-                            <span class="text-sm text-gray-500" id="kpi-txSuccess-previous">vs 99.3%</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ < 3s (Real-time)</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-txRealtime-current">98.5%</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-green-600" id="kpi-txRealtime-change">+0.1%</span>
-                            <span class="text-sm text-gray-500" id="kpi-txRealtime-previous">vs 98.4%</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ GD Thất bại</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-txFail-current">0.9%</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-red-600" id="kpi-txFail-change">+0.2%</span>
-                            <span class="text-sm text-gray-500" id="kpi-txFail-previous">vs 0.7%</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="report-card">
-                    <div class="report-card-title">Lỗi Core Bank (Top)</div>
-                    <div class="report-card-body">
-                        <div class="kpi-value-main" id="kpi-txCoreError-current">0.4%</div>
-                        <div class="flex justify-between items-baseline mt-1">
-                            <span class="kpi-change text-red-600" id="kpi-txCoreError-change">+0.05%</span>
-                            <span class="text-sm text-gray-500" id="kpi-txCoreError-previous">vs 0.35%</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Section: Charts -->
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Phân tích Chi tiết</h2>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                .chart-container {
+                    position: relative;
+                    width: 100%;
+                    max-width: 600px;
+                    margin-left: auto;
+                    margin-right: auto;
+                    height: 300px;
+                    max-height: 400px;
+                }
+                @media (min-width: 768px) {
+                    .chart-container {
+                        height: 350px;
+                    }
+                }
+                .chart-container-tall {
+                    position: relative;
+                    width: 100%;
+                    max-width: 900px;
+                    margin-left: auto;
+                    margin-right: auto;
+                    height: 350px;
+                    max-height: 450px;
+                }
                 
-                <!-- DAU Chart -->
-                <div class="report-card">
-                    <div class="report-card-title">Người dùng hoạt động (DAU)</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="dauChart"></canvas>
-                        </div>
-                    </div>
-                </div>
+                .modal-overlay {
+                    @apply fixed inset-0 bg-black bg-opacity-50 z-40 hidden justify-center items-center;
+                }
+                .modal-content {
+                    @apply bg-white rounded-lg shadow-xl w-11/12 max-w-lg p-6 relative z-50;
+                }
+                .modal-header {
+                    @apply flex justify-between items-center pb-3 border-b;
+                }
+                .modal-close {
+                    @apply text-gray-500 hover:text-gray-800 text-3xl font-light;
+                }
+                .modal-body {
+                    @apply my-4;
+                }
+                .loader {
+                    @apply w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin;
+                }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                .gemini-button {
+                    @apply bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl border-2 border-purple-400 hover:border-purple-300;
+                    background-size: 200% 200%;
+                    animation: gradientShift 3s ease infinite;
+                }
                 
-                <!-- TX Volume Chart -->
-                <div class="report-card">
-                    <div class="report-card-title">Khối lượng Giao dịch (30 ngày)</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="txVolumeChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Onboarding Funnel -->
-                <div class="report-card">
-                    <div class="report-card-title">Phễu Onboarding</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="onboardingFunnelChart"></canvas>
-                        </div>
-                        <div class="mt-4 text-center">
-                            <button id="analyze-onboarding" class="gemini-button">✨ Phân tích điểm rơi eKYC</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Acquisition Channels -->
-                <div class="report-card">
-                    <div class="report-card-title">Kênh Onboard</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="acquisitionChannelChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TX Success/Fail -->
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ Giao dịch T.công/Thất bại</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="txSuccessFailChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TX Fail Reason -->
-                <div class="report-card">
-                    <div class="report-card-title">Lý do Giao dịch Thất bại (Top 5)</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="txFailReasonChart"></canvas>
-                        </div>
-                        <div class="mt-4 text-center">
-                            <button id="analyze-failures" class="gemini-button">✨ Đề xuất giải pháp lỗi GD</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Top TX Type -->
-                <div class="report-card">
-                    <div class="report-card-title">Loại Giao dịch Phổ biến (theo SLGD)</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="topTxTypeChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Stickiness -->
-                <div class="report-card">
-                    <div class="report-card-title">Tỷ lệ DAU / MAU (Stickiness)</div>
-                    <div class="report-card-body">
-                        <div class="chart-container-tall">
-                            <canvas id="stickinessChart"></canvas>
-                        </div>
-                        <div class="mt-4 text-center">
-                            <button id="analyze-engagement" class="gemini-button">✨ Gợi ý cải thiện tương tác</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Churn & Session -->
-                <div class="report-card">
-                    <div class="report-card-title">Tương tác & Giữ chân</div>
-                    <div class="report-card-body grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-500">Churn Rate (30-day inactivity)</h4>
-                            <div class="text-4xl font-bold text-red-600 mt-1" id="kpi-churn-current">4.2%</div>
-                            <div class="flex justify-between items-baseline mt-1">
-                                <span class="kpi-change text-green-600" id="kpi-churn-change">-0.5%</span>
-                                <span class="text-sm text-gray-500" id="kpi-churn-previous">vs 4.7%</span>
-                            </div>
-                        </div>
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-500">Average Session Length</h4>
-                            <div class="text-4xl font-bold text-gray-900 mt-1" id="kpi-session-current">3.5 phút</div>
-                            <div class="flex justify-between items-baseline mt-1">
-                                <span class="kpi-change text-green-600" id="kpi-session-change">+12s</span>
-                                <span class="text-sm text-gray-500" id="kpi-session-previous">vs 3.3 phút</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </main>
-    </div>
-
-    <!-- Gemini Modal -->
-    <div id="gemini-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-title" class="text-lg font-semibold text-gray-800">Đang phân tích...</h3>
-                <button id="modal-close" class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body" id="modal-body-content">
-                <div class="flex justify-center items-center h-32" id="modal-loader">
-                    <div class="loader"></div>
-                </div>
-                <div id="modal-result" class="text-gray-700" style="white-space: pre-wrap;"></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            
-            Chart.register(ChartDataLabels);
-            
-            Chart.defaults.font.family = "'Inter', sans-serif";
-            Chart.defaults.font.weight = 500;
-
-            const chartData = {
-                '30': {
-                    kpi: {
-                        mau: { current: '1.25M', previous: '1.19M', change: '+5.2%', changeColor: 'text-green-600' },
-                        newUsers: { current: '45,208', previous: '41,820', change: '+8.1%', changeColor: 'text-green-600' },
-                        totalTx: { current: '22.4M', previous: '19.9M', change: '+12.5%', changeColor: 'text-green-600' },
-                        successRate: { current: '99.1%', previous: '99.3%', change: '-0.2%', changeColor: 'text-red-600' },
-                        txSuccess: { current: '99.1%', previous: '99.3%', change: '-0.2%', changeColor: 'text-red-600' },
-                        txRealtime: { current: '98.5%', previous: '98.4%', change: '+0.1%', changeColor: 'text-green-600' },
-                        txFail: { current: '0.9%', previous: '0.7%', change: '+0.2%', changeColor: 'text-red-600' },
-                        txCoreError: { current: '0.4%', previous: '0.35%', change: '+0.05%', changeColor: 'text-red-600' },
-                        churn: { current: '4.2%', previous: '4.7%', change: '-0.5%', changeColor: 'text-green-600' },
-                        session: { current: '3.5 phút', previous: '3.3 phút', change: '+12s', changeColor: 'text-green-600' }
-                    },
-                    dau: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T22', 'T23', 'T24', 'T25', 'T26', 'T27', 'T28', 'T29', 'T30'], data: [320, 340, 330, 350, 360, 370, 380, 375, 385, 390, 400, 410, 405, 415, 420, 425, 430, 420, 435, 440, 450, 445, 455, 460, 470, 465, 475, 480, 490, 500], previousData: [290, 310, 300, 320, 330, 340, 350, 345, 355, 360, 370, 380, 375, 385, 390, 395, 400, 390, 405, 410, 420, 415, 425, 430, 440, 435, 445, 450, 460, 470] },
-                    txVolume: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T22', 'T23', 'T24', 'T25', 'T26', 'T27', 'T28', 'T29', 'T30'], data: [0.8, 0.9, 0.85, 0.95, 1.0, 1.1, 1.05, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0, 2.05, 2.1, 2.15, 2.2, 2.3], previousData: [0.7, 0.8, 0.75, 0.85, 0.9, 1.0, 0.95, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0, 2.05, 2.1, 2.2] },
-                    onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [20000, 15000, 14000, 10000, 9500], previousData: [19000, 14000, 13000, 9000, 8500] },
-                    acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [40, 30, 15, 15], previousData: [42, 28, 18, 12] },
-                    txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.1, 0.9], previousData: [99.3, 0.7] },
-                    txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [45, 25, 15, 10, 5], previousData: [42, 28, 15, 10, 5] },
-                    topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [10.2, 5.1, 3.5, 2.0, 1.6], previousData: [9.8, 4.9, 3.2, 1.8, 1.5] },
-                    stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [18, 19, 20, 19, 21, 22, 23, 22, 24, 25, 24, 26], previousData: [17, 18, 19, 18, 20, 21, 22, 21, 23, 24, 23, 25] }
-                },
-                '7': {
-                    kpi: {
-                        mau: { current: '1.21M', previous: '1.20M', change: '+1.1%', changeColor: 'text-green-600' },
-                        newUsers: { current: '9,800', previous: '10,050', change: '-2.5%', changeColor: 'text-red-600' },
-                        totalTx: { current: '4.8M', previous: '4.66M', change: '+3.0%', changeColor: 'text-green-600' },
-                        successRate: { current: '99.0%', previous: '99.3%', change: '-0.3%', changeColor: 'text-red-600' },
-                        txSuccess: { current: '99.0%', previous: '99.3%', change: '-0.3%', changeColor: 'text-red-600' },
-                        txRealtime: { current: '98.2%', previous: '98.3%', change: '-0.1%', changeColor: 'text-red-600' },
-                        txFail: { current: '1.0%', previous: '0.7%', change: '+0.3%', changeColor: 'text-red-600' },
-                        txCoreError: { current: '0.5%', previous: '0.4%', change: '+0.1%', changeColor: 'text-red-600' },
-                        churn: { current: '4.0%', previous: '4.1%', change: '-0.1%', changeColor: 'text-green-600' },
-                        session: { current: '3.4 phút', previous: '3.5 phút', change: '-5s', changeColor: 'text-red-600' }
-                    },
-                    dau: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], data: [470, 465, 475, 480, 490, 500, 495], previousData: [450, 445, 455, 460, 470, 480, 475] },
-                    txVolume: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], data: [2.0, 2.05, 2.1, 2.15, 2.2, 2.3, 2.25], previousData: [1.9, 1.95, 2.0, 2.05, 2.1, 2.2, 2.15] },
-                    onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [4500, 3200, 3000, 2100, 2000], previousData: [4300, 3000, 2800, 1900, 1800] },
-                    acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [38, 35, 12, 15], previousData: [40, 33, 12, 15] },
-                    txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.0, 1.0], previousData: [99.3, 0.7] },
-                    txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [50, 22, 15, 8, 5], previousData: [48, 25, 14, 8, 5] },
-                    topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [2.2, 1.1, 0.7, 0.4, 0.4], previousData: [2.0, 1.0, 0.6, 0.3, 0.3] },
-                    stickiness: { labels: ['T10', 'T11', 'T12'], data: [25, 24, 26], previousData: [24, 23, 25] }
-                },
-                '90': {
-                    kpi: {
-                        mau: { current: '1.15M', previous: '1.00M', change: '+15.2%', changeColor: 'text-green-600' },
-                        newUsers: { current: '140,100', previous: '127,200', change: '+10.1%', changeColor: 'text-green-600' },
-                        totalTx: { current: '65.1M', previous: '54.0M', change: '+20.5%', changeColor: 'text-green-600' },
-                        successRate: { current: '99.2%', previous: '99.1%', change: '+0.1%', changeColor: 'text-green-600' },
-                        txSuccess: { current: '99.2%', previous: '99.1%', change: '+0.1%', changeColor: 'text-green-600' },
-                        txRealtime: { current: '98.6%', previous: '98.4%', change: '+0.2%', changeColor: 'text-green-600' },
-                        txFail: { current: '0.8%', previous: '0.9%', change: '-0.1%', changeColor: 'text-green-600' },
-                        txCoreError: { current: '0.3%', previous: '0.35%', change: '-0.05%', changeColor: 'text-green-600' },
-                        churn: { current: '4.5%', previous: '4.3%', change: '+0.2%', changeColor: 'text-red-600' },
-                        session: { current: '3.3 phút', previous: '3.2 phút', change: '+5s', changeColor: 'text-green-600' }
-                    },
-                    dau: { labels: Array(90).fill('T').map((v, i) => v + (i+1)), data: Array(90).fill(0).map((_, i) => 200 + i * 3.5 + Math.sin(i / 5) * 20), previousData: Array(90).fill(0).map((_, i) => 180 + i * 3.4 + Math.sin(i / 5) * 15) },
-                    txVolume: { labels: Array(90).fill('T').map((v, i) => v + (i+1)), data: Array(90).fill(0).map((_, i) => 0.5 + i * 0.02 + Math.sin(i / 6) * 0.1), previousData: Array(90).fill(0).map((_, i) => 0.4 + i * 0.019 + Math.sin(i / 6) * 0.09) },
-                    onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [65000, 50000, 48000, 33000, 31000], previousData: [62000, 48000, 46000, 31000, 29000] },
-                    acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [42, 28, 18, 12], previousData: [40, 30, 18, 12] },
-                    txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.2, 0.8], previousData: [99.1, 0.9] },
-                    txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [40, 30, 15, 10, 5], previousData: [42, 28, 15, 10, 5] },
-                    topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [30.1, 15.2, 9.8, 5.5, 4.5], previousData: [28.0, 14.1, 8.5, 5.0, 4.0] },
-                    stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [15, 16, 17, 18, 19, 20, 19, 21, 22, 23, 22, 24], previousData: [14, 15, 16, 17, 18, 19, 18, 20, 21, 22, 21, 23] }
-                },
-                'all': {
-                    kpi: {
-                        mau: { current: '1.25M', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        newUsers: { current: '500,000', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        totalTx: { current: '150M', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        successRate: { current: '99.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        txSuccess: { current: '99.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        txRealtime: { current: '98.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        txFail: { current: '1.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        txCoreError: { current: '0.4%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        churn: { current: '5.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
-                        session: { current: '3.0 phút', previous: '', change: 'N/A', changeColor: 'text-gray-500' }
-                    },
-                    dau: { labels: Array(365).fill('T').map((v, i) => v + (i+1)), data: Array(365).fill(0).map((_, i) => 100 + i * 1.2 + Math.sin(i / 10) * 30) },
-                    txVolume: { labels: Array(365).fill('T').map((v, i) => v + (i+1)), data: Array(365).fill(0).map((_, i) => 0.2 + i * 0.006 + Math.sin(i / 12) * 0.1) },
-                    onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [250000, 200000, 190000, 140000, 130000] },
-                    acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [50, 20, 20, 10] },
-                    txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.0, 1.0] },
-                    txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [42, 28, 15, 10, 5] },
-                    topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [70.5, 30.1, 20.2, 15.1, 14.1] },
-                    stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] }
+                @keyframes gradientShift {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
                 }
-            };
-
-            let chartInstances = {};
-
-            const modal = document.getElementById('gemini-modal');
-            const modalClose = document.getElementById('modal-close');
-            const modalTitle = document.getElementById('modal-title');
-            const modalLoader = document.getElementById('modal-loader');
-            const modalResult = document.getElementById('modal-result');
-
-            function showModal(title) {
-                modalTitle.textContent = title;
-                modalLoader.style.display = 'flex';
-                modalResult.style.display = 'none';
-                modal.style.display = 'flex';
-            }
-
-            function hideModal() {
-                modal.style.display = 'none';
-            }
-
-            function setModalResult(content) {
-                modalLoader.style.display = 'none';
-                modalResult.innerHTML = content;
-                modalResult.style.display = 'block';
-            }
-
-            function setModalError(error) {
-                modalLoader.style.display = 'none';
-                modalResult.innerHTML = `<div class="text-red-600 p-4 bg-red-100 rounded"><b>Lỗi:</b> ${error}</div>`;
-                modalResult.style.display = 'block';
-            }
-
-            modalClose.addEventListener('click', hideModal);
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) hideModal();
-            });
-
-            async function callGemini(prompt, retries = 3, delay = 1000) {
-                const apiKey = ""; 
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    systemInstruction: {
-                        parts: [{ text: "Bạn là chuyên gia phân tích dữ liệu mảng ngân hàng số. Hãy trả lời bằng tiếng Việt, phân tích sâu, chuyên nghiệp, và đưa ra các đề xuất hành động (actionable insights) cụ thể, đánh số từng mục." }]
-                    },
-                };
-
-                for (let i = 0; i < retries; i++) {
-                    try {
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const result = await response.json();
-                        const candidate = result.candidates?.[0];
-
-                        if (candidate && candidate.content?.parts?.[0]?.text) {
-                            return candidate.content.parts[0].text;
-                        } else {
-                            throw new Error("Phản hồi từ API không hợp lệ hoặc không chứa nội dung.");
-                        }
-                    } catch (error) {
-                        if (i === retries - 1) {
-                            throw error;
-                        }
-                        await new Promise(res => setTimeout(res, delay * (i + 1)));
-                    }
+                
+                /* Tab Styles */
+                .tab-button {
+                    padding: 0.75rem 1.5rem;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    border-radius: 0.5rem;
+                    transition: all 0.2s;
+                    cursor: pointer;
+                    border: none;
+                    outline: none;
                 }
-            }
-
-            const chartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: {
-                    duration: 1000,
-                    easing: 'easeInOutQuart'
-                },
-                plugins: {
-                    datalabels: {
-                        display: false,
-                    },
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 16,
-                            font: {
-                                size: 13
-                            }
-                        }
-                    },
-                    tooltip: {
-                        enabled: true,
-                        backgroundColor: 'rgba(0,0,0,0.85)',
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 12 },
-                        padding: 12,
-                        cornerRadius: 8,
-                        displayColors: true,
-                        boxPadding: 4,
-                        caretSize: 6,
-                        caretPadding: 10,
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                let value = context.parsed.y;
-                                if (context.parsed.x !== null && context.chart.options.indexAxis === 'y') {
-                                    value = context.parsed.x;
-                                }
-
-                                if (value !== null) {
-                                    if (context.chart.canvas.id.includes('Funnel')) {
-                                        label = (context.dataset.label || '') + ': ' + value.toLocaleString('vi-VN') + ' users';
-                                    } else if (context.chart.canvas.id.includes('SuccessFail') || context.chart.canvas.id.includes('Acquisition') || context.chart.canvas.id.includes('txFailReason')) {
-                                        label = (context.dataset.label || '') + ': ' + value + '%';
-                                    } else if (context.chart.canvas.id.includes('stickiness')) {
-                                        label = (context.dataset.label || '') + ': ' + value + '%';
-                                    } else if (context.chart.canvas.id.includes('topTxType') || context.chart.canvas.id.includes('txVolume')) {
-                                         label = (context.dataset.label || '') + ': ' + value + 'M';
-                                    } else {
-                                        label += value;
-                                    }
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: {
-                            display: false,
-                            borderColor: 'rgba(0, 0, 0, 0.05)'
-                        },
-                        ticks: {
-                            font: {
-                                size: 11
-                            },
-                            callback: function(value, index, ticks) {
-                                const label = this.getLabelForValue(value);
-                                if (label.length > 10) {
-                                    return label.substring(0, 10) + '...';
-                                }
-                                return label;
-                            }
-                        }
-                    },
-                    y: {
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)',
-                            borderDash: [3, 3]
-                        },
-                        ticks: {
-                            font: {
-                                size: 11
-                            }
-                        }
-                    }
+                .tab-button.active {
+                    background-color: #4f46e5;
+                    color: white;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
                 }
-            };
-            
-            function createChart(ctx, type, data, options) {
-                const id = ctx.canvas.id;
-                if (chartInstances[id]) {
-                    chartInstances[id].destroy();
+                .tab-button.inactive {
+                    background-color: white;
+                    color: #6b7280;
+                    border: 1px solid #d1d5db;
                 }
-                chartInstances[id] = new Chart(ctx, { 
-                    type, 
-                    data, 
-                    options: { ...chartOptions, ...options }
-                });
-            }
-
-            function updateKPIs(data) {
-                // data is chartData[period].kpi
-                for (const [key, values] of Object.entries(data)) {
-                    // key = 'mau', 'newUsers', etc.
-                    // values = { current: '...', previous: '...', change: '...', changeColor: '...' }
-
-                    const currentEl = document.getElementById(`kpi-${key}-current`);
-                    const changeEl = document.getElementById(`kpi-${key}-change`);
-                    const previousEl = document.getElementById(`kpi-${key}-previous`);
-
-                    if (currentEl) currentEl.textContent = values.current;
-                    if (changeEl) {
-                        changeEl.textContent = values.change;
-                        changeEl.className = `kpi-change ${values.changeColor}`;
-                    }
-                    if (previousEl) {
-                        if (values.previous) {
-                            previousEl.textContent = `vs ${values.previous}`;
-                        } else {
-                            previousEl.textContent = ''; // Clear it if no previous value (e.g., 'all' time)
-                        }
-                    }
+                .tab-button.inactive:hover {
+                    background-color: #f9fafb;
                 }
-            }
-
-            function initOverviewCharts(data) {
-                const dauCtx = document.getElementById('dauChart');
-                if (dauCtx) {
-                    const datasets = [{
-                        label: 'DAU (Kỳ này)',
-                        data: data.dau.data,
-                        borderColor: '#4f46e5',
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        fill: true,
-                        tension: 0.1,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: '#4f46e5',
-                        pointBorderColor: '#fff',
-                        pointHoverBorderColor: '#fff',
-                        pointHoverBackgroundColor: '#3730a3'
-                    }];
-
-                    if (data.dau.previousData) {
-                        datasets.push({
-                            label: 'DAU (Kỳ trước)',
-                            data: data.dau.previousData,
-                            borderColor: '#a5b4fc', // Lighter indigo
-                            backgroundColor: 'transparent',
-                            fill: false,
-                            tension: 0.1,
-                            pointRadius: 2,
-                            pointHoverRadius: 4,
-                            borderDash: [5, 5], // Dashed line
-                            pointBackgroundColor: '#a5b4fc',
-                            pointBorderColor: '#fff',
-                            pointHoverBorderColor: '#fff',
-                            pointHoverBackgroundColor: '#818cf8'
-                        });
-                    }
-
-                    createChart(dauCtx.getContext('2d'), 'line', {
-                        labels: data.dau.labels,
-                        datasets: datasets
-                    }, {});
+                .tab-content {
+                    display: none;
                 }
+                .tab-content.active {
+                    display: block;
+                }
+            </style>
+        </head>
+        <body class="text-gray-800">
 
-                const txVolumeCtx = document.getElementById('txVolumeChart');
-                if (txVolumeCtx) {
-                    const datasets = [{
-                        label: 'SL Giao dịch (Kỳ này)',
-                        data: data.txVolume.data,
-                        backgroundColor: '#4f46e5',
-                        borderRadius: 6,
-                        maxBarThickness: 50
-                    }];
-
-                    if (data.txVolume.previousData) {
-                        datasets.push({
-                            label: 'SL Giao dịch (Kỳ trước)',
-                            data: data.txVolume.previousData,
-                            backgroundColor: '#a5b4fc', // Lighter indigo
-                            borderRadius: 6,
-                            maxBarThickness: 50
-                        });
-                    }
+            <!-- Main Content Area -->
+            <div class="flex-1 flex flex-col">
+                
+                <!-- Main Content -->
+                <main class="container mx-auto p-4 sm:p-6 lg:p-8">
                     
-                    createChart(txVolumeCtx.getContext('2d'), 'bar', {
-                        labels: data.txVolume.labels,
-                        datasets: datasets
-                    }, {
+                    <!-- Page Header -->
+                    <header class="flex flex-col sm:flex-row justify-between sm:items-center mb-6">
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-900">BI Dashboard: Mobile Banking</h1>
+                            <p class="text-gray-600">Báo cáo hiệu suất toàn diện</p>
+                        </div>
+                        <div class="mt-4 sm:mt-0">
+                            <label for="date-filter" class="sr-only">Lọc theo ngày</label>
+                            <select id="date-filter" class="w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                <option value="30">30 ngày qua</option>
+                                <option value="7">7 ngày qua</option>
+                                <option value="90">90 ngày qua</option>
+                                <option value="all">Toàn thời gian</option>
+                            </select>
+                        </div>
+                    </header>
+
+                    <!-- Tab Navigation -->
+                    <div class="mb-8 border-b border-gray-200">
+                        <nav class="flex space-x-8" aria-label="Tabs">
+                            <button id="tab-overview" class="tab-button active" onclick="switchTab('overview')">
+                                📊 Tổng quan
+                            </button>
+                            <button id="tab-onboarding" class="tab-button inactive" onclick="switchTab('onboarding')">
+                                👥 Onboarding
+                            </button>
+                            <button id="tab-transaction" class="tab-button inactive" onclick="switchTab('transaction')">
+                                💳 Giao dịch
+                            </button>
+                            <button id="tab-engagement" class="tab-button inactive" onclick="switchTab('engagement')">
+                                🎯 Tương tác
+                            </button>
+                        </nav>
+                    </div>
+
+                    <!-- Tab Content: Overview -->
+                    <div id="content-overview" class="tab-content active">
+                        <!-- Section: Overview KPIs -->
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Tổng quan KPI</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+                            <div class="report-card">
+                                <div class="report-card-title">Người dùng hoạt động (MAU)</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-mau-current">1.25M</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-mau-change">+5.2%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-mau-previous">vs 1.19M</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Người dùng mới</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-newUsers-current">45,208</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-newUsers-change">+8.1%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-newUsers-previous">vs 41,820</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tổng SL Giao dịch</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-totalTx-current">22.4M</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-totalTx-change">+12.5%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-totalTx-previous">vs 19.9M</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ GD thành công</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-successRate-current">99.1%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-red-600" id="kpi-successRate-change">-0.2%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-successRate-previous">vs 99.3%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Overview Charts -->
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Phân tích Chi tiết</h2>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- DAU Chart -->
+                            <div class="report-card">
+                                <div class="report-card-title">Người dùng hoạt động (DAU)</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="dauChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- TX Volume Chart -->
+                            <div class="report-card">
+                                <div class="report-card-title">Khối lượng Giao dịch</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="txVolumeChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Onboarding -->
+                    <div id="content-onboarding" class="tab-content">
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Onboarding & Acquisition</h2>
+                        
+                        <!-- Onboarding KPIs -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8">
+                            <div class="report-card">
+                                <div class="report-card-title">Người dùng mới</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-onb-newUsers-current">45,208</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-onb-newUsers-change">+8.1%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-onb-newUsers-previous">vs 41,820</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ hoàn thành eKYC</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-onb-conversion-current">67.9%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-onb-conversion-change">+2.1%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-onb-conversion-previous">vs 65.8%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Onboarding Charts -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Onboarding Funnel -->
+                            <div class="report-card">
+                                <div class="report-card-title">Phễu Onboarding</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="onboardingFunnelChart"></canvas>
+                                    </div>
+                                    <div class="mt-4 text-center">
+                                        <button id="analyze-onboarding" class="gemini-button">✨ Phân tích điểm rơi eKYC</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Acquisition Channels -->
+                            <div class="report-card">
+                                <div class="report-card-title">Kênh Onboard</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="acquisitionChannelChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Onboarding by Region -->
+                            <div class="report-card">
+                                <div class="report-card-title">Onboarding theo Khu vực</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="onboardingByRegionChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Onboarding by Marketing Campaign -->
+                            <div class="report-card">
+                                <div class="report-card-title">Onboarding theo Campaign Marketing</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="onboardingByCampaignChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Transaction -->
+                    <div id="content-transaction" class="tab-content">
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Hiệu suất Giao dịch</h2>
+                        
+                        <!-- Transaction KPIs -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 mb-8">
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ GD T.Công</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-tx-txSuccess-current">99.1%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-red-600" id="kpi-tx-txSuccess-change">-0.2%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-tx-txSuccess-previous">vs 99.3%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ < 3s (Real-time)</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-tx-txRealtime-current">98.5%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-tx-txRealtime-change">+0.1%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-tx-txRealtime-previous">vs 98.4%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ GD Thất bại</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-tx-txFail-current">0.9%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-red-600" id="kpi-tx-txFail-change">+0.2%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-tx-txFail-previous">vs 0.7%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Lỗi Core Bank (Top)</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-tx-txCoreError-current">0.4%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-red-600" id="kpi-tx-txCoreError-change">+0.05%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-tx-txCoreError-previous">vs 0.35%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">SL KH mới có GD</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-tx-newTxCustomers-current">18,450</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-tx-newTxCustomers-change">+15.2%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-tx-newTxCustomers-previous">vs 16,010</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Transaction Charts -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- TX Success/Fail -->
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ Giao dịch T.công/Thất bại</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="txSuccessFailChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TX Fail Reason -->
+                            <div class="report-card">
+                                <div class="report-card-title">Lý do Giao dịch Thất bại (Top 5)</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="txFailReasonChart"></canvas>
+                                    </div>
+                                    <div class="mt-4 text-center">
+                                        <button id="analyze-failures" class="gemini-button">✨ Đề xuất giải pháp lỗi GD</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Top TX Type -->
+                            <div class="report-card">
+                                <div class="report-card-title">Loại Giao dịch Phổ biến (theo SLGD)</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="topTxTypeChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TX by Region -->
+                            <div class="report-card">
+                                <div class="report-card-title">SL Giao dịch theo Khu vực</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="txByRegionChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Engagement -->
+                    <div id="content-engagement" class="tab-content">
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Tương tác & Engagement</h2>
+                        
+                        <!-- Engagement KPIs -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
+                            <div class="report-card">
+                                <div class="report-card-title">Login rate</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main text-red-600" id="kpi-eng-churn-current">4.2%</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-eng-churn-change">-0.5%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-eng-churn-previous">vs 4.7%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Average Session Length</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-eng-session-current">3.5 phút</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-eng-session-change">+12s</span>
+                                        <span class="text-sm text-gray-500" id="kpi-eng-session-previous">vs 3.3 phút</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-card">
+                                <div class="report-card-title">Tổng KH Login</div>
+                                <div class="report-card-body">
+                                    <div class="kpi-value-main" id="kpi-eng-totalLogin-current">892,450</div>
+                                    <div class="flex justify-between items-baseline mt-1">
+                                        <span class="kpi-change text-green-600" id="kpi-eng-totalLogin-change">+8.3%</span>
+                                        <span class="text-sm text-gray-500" id="kpi-eng-totalLogin-previous">vs 824,120</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Engagement Charts -->
+                        <div class="grid grid-cols-1 gap-6">
+                            <!-- Stickiness -->
+                            <div class="report-card">
+                                <div class="report-card-title">Tỷ lệ DAU / MAU (Stickiness)</div>
+                                <div class="report-card-body">
+                                    <div class="chart-container-tall">
+                                        <canvas id="stickinessChart"></canvas>
+                                    </div>
+                                    <div class="mt-4 text-center">
+                                        <button id="analyze-engagement" class="gemini-button">✨ Gợi ý cải thiện tương tác</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+
+            <!-- Gemini Modal -->
+            <div id="gemini-modal" class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="modal-title" class="text-lg font-semibold text-gray-800"></h3>
+                        <button id="modal-close" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modal-body-content">
+                        <div class="flex justify-center items-center h-32" id="modal-loader">
+                            <div class="loader"></div>
+                        </div>
+                        <div id="modal-result" class="text-gray-700" style="white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+            </div>
+
+                    <!-- Tab Content: Transaction -->
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    
+                    Chart.register(ChartDataLabels);
+                    
+                    Chart.defaults.font.family = "'Inter', sans-serif";
+                    Chart.defaults.font.weight = 500;
+
+                    const chartData = {
+                        '30': {
+                            kpi: {
+                                mau: { current: '1.25M', previous: '1.19M', change: '+5.2%', changeColor: 'text-green-600' },
+                                newUsers: { current: '45,208', previous: '41,820', change: '+8.1%', changeColor: 'text-green-600' },
+                                totalTx: { current: '22.4M', previous: '19.9M', change: '+12.5%', changeColor: 'text-green-600' },
+                                successRate: { current: '99.1%', previous: '99.3%', change: '-0.2%', changeColor: 'text-red-600' },
+                                txSuccess: { current: '99.1%', previous: '99.3%', change: '-0.2%', changeColor: 'text-red-600' },
+                                txRealtime: { current: '98.5%', previous: '98.4%', change: '+0.1%', changeColor: 'text-green-600' },
+                                txFail: { current: '0.9%', previous: '0.7%', change: '+0.2%', changeColor: 'text-red-600' },
+                                txCoreError: { current: '0.4%', previous: '0.35%', change: '+0.05%', changeColor: 'text-red-600' },
+                                newTxCustomers: { current: '18,450', previous: '16,010', change: '+15.2%', changeColor: 'text-green-600' },
+                                churn: { current: '4.2%', previous: '4.7%', change: '-0.5%', changeColor: 'text-green-600' },
+                                session: { current: '3.5 phút', previous: '3.3 phút', change: '+12s', changeColor: 'text-green-600' },
+                                totalLogin: { current: '892,450', previous: '824,120', change: '+8.3%', changeColor: 'text-green-600' }
+                            },
+                            dau: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T22', 'T23', 'T24', 'T25', 'T26', 'T27', 'T28', 'T29', 'T30'], data: [320, 340, 330, 350, 360, 370, 380, 375, 385, 390, 400, 410, 405, 415, 420, 425, 430, 420, 435, 440, 450, 445, 455, 460, 470, 465, 475, 480, 490, 500], previousData: [290, 310, 300, 320, 330, 340, 350, 345, 355, 360, 370, 380, 375, 385, 390, 395, 400, 390, 405, 410, 420, 415, 425, 430, 440, 435, 445, 450, 460, 470] },
+                            txVolume: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T22', 'T23', 'T24', 'T25', 'T26', 'T27', 'T28', 'T29', 'T30'], data: [0.8, 0.9, 0.85, 0.95, 1.0, 1.1, 1.05, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0, 2.05, 2.1, 2.15, 2.2, 2.3], previousData: [0.7, 0.8, 0.75, 0.85, 0.9, 1.0, 0.95, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0, 2.05, 2.1, 2.2] },
+                            onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [20000, 15000, 14000, 10000, 9500], previousData: [19000, 14000, 13000, 9000, 8500] },
+                            acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [40, 30, 15, 15], previousData: [42, 28, 18, 12] },
+                            onboardingByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [8500, 6200, 3100, 2800, 1600], previousData: [7800, 5900, 2900, 2500, 1400] },
+                            onboardingByCampaign: { labels: ['Summer Sale', 'New User Bonus', 'Referral Program', 'Holiday Promo', 'Khác'], data: [4200, 3800, 2900, 2100, 1800], previousData: [3900, 3500, 2700, 1900, 1600] },
+                            txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.1, 0.9], previousData: [99.3, 0.7] },
+                            txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [45, 25, 15, 10, 5], previousData: [42, 28, 15, 10, 5] },
+                            topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [10.2, 5.1, 3.5, 2.0, 1.6], previousData: [9.8, 4.9, 3.2, 1.8, 1.5] },
+                            txByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [8.5, 6.2, 3.1, 2.8, 1.6], previousData: [7.8, 5.9, 2.9, 2.5, 1.4] },
+                            stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [18, 19, 20, 19, 21, 22, 23, 22, 24, 25, 24, 26], previousData: [17, 18, 19, 18, 20, 21, 22, 21, 23, 24, 23, 25] }
+                        },
+                        '7': {
+                            kpi: {
+                                mau: { current: '1.21M', previous: '1.20M', change: '+1.1%', changeColor: 'text-green-600' },
+                                newUsers: { current: '9,800', previous: '10,050', change: '-2.5%', changeColor: 'text-red-600' },
+                                totalTx: { current: '4.8M', previous: '4.66M', change: '+3.0%', changeColor: 'text-green-600' },
+                                successRate: { current: '99.0%', previous: '99.3%', change: '-0.3%', changeColor: 'text-red-600' },
+                                txSuccess: { current: '99.0%', previous: '99.3%', change: '-0.3%', changeColor: 'text-red-600' },
+                                txRealtime: { current: '98.2%', previous: '98.3%', change: '-0.1%', changeColor: 'text-red-600' },
+                                txFail: { current: '1.0%', previous: '0.7%', change: '+0.3%', changeColor: 'text-red-600' },
+                                txCoreError: { current: '0.5%', previous: '0.4%', change: '+0.1%', changeColor: 'text-red-600' },
+                                newTxCustomers: { current: '4,120', previous: '4,250', change: '-3.1%', changeColor: 'text-red-600' },
+                                churn: { current: '4.0%', previous: '4.1%', change: '-0.1%', changeColor: 'text-green-600' },
+                                session: { current: '3.4 phút', previous: '3.5 phút', change: '-5s', changeColor: 'text-red-600' },
+                                totalLogin: { current: '198,650', previous: '201,200', change: '-1.3%', changeColor: 'text-red-600' }
+                            },
+                            dau: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], data: [470, 465, 475, 480, 490, 500, 495], previousData: [450, 445, 455, 460, 470, 480, 475] },
+                            txVolume: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], data: [2.0, 2.05, 2.1, 2.15, 2.2, 2.3, 2.25], previousData: [1.9, 1.95, 2.0, 2.05, 2.1, 2.2, 2.15] },
+                            onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [4500, 3200, 3000, 2100, 2000], previousData: [4300, 3000, 2800, 1900, 1800] },
+                            acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [38, 35, 12, 15], previousData: [40, 33, 12, 15] },
+                            onboardingByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [1900, 1380, 690, 620, 350], previousData: [1750, 1320, 660, 590, 330] },
+                            onboardingByCampaign: { labels: ['Summer Sale', 'New User Bonus', 'Referral Program', 'Holiday Promo', 'Khác'], data: [920, 830, 630, 460, 390], previousData: [850, 770, 590, 420, 360] },
+                            txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.0, 1.0], previousData: [99.3, 0.7] },
+                            txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [50, 22, 15, 8, 5], previousData: [48, 25, 14, 8, 5] },
+                            topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [2.2, 1.1, 0.7, 0.4, 0.4], previousData: [2.0, 1.0, 0.6, 0.3, 0.3] },
+                            txByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [1.8, 1.3, 0.6, 0.5, 0.3], previousData: [1.7, 1.2, 0.6, 0.5, 0.3] },
+                            stickiness: { labels: ['T10', 'T11', 'T12'], data: [25, 24, 26], previousData: [24, 23, 25] }
+                        },
+                        '90': {
+                            kpi: {
+                                mau: { current: '1.15M', previous: '1.00M', change: '+15.2%', changeColor: 'text-green-600' },
+                                newUsers: { current: '140,100', previous: '127,200', change: '+10.1%', changeColor: 'text-green-600' },
+                                totalTx: { current: '65.1M', previous: '54.0M', change: '+20.5%', changeColor: 'text-green-600' },
+                                successRate: { current: '99.2%', previous: '99.1%', change: '+0.1%', changeColor: 'text-green-600' },
+                                txSuccess: { current: '99.2%', previous: '99.1%', change: '+0.1%', changeColor: 'text-green-600' },
+                                txRealtime: { current: '98.6%', previous: '98.4%', change: '+0.2%', changeColor: 'text-green-600' },
+                                txFail: { current: '0.8%', previous: '0.9%', change: '-0.1%', changeColor: 'text-green-600' },
+                                txCoreError: { current: '0.3%', previous: '0.35%', change: '-0.05%', changeColor: 'text-green-600' },
+                                newTxCustomers: { current: '58,920', previous: '52,180', change: '+12.9%', changeColor: 'text-green-600' },
+                                churn: { current: '4.5%', previous: '4.3%', change: '+0.2%', changeColor: 'text-red-600' },
+                                session: { current: '3.3 phút', previous: '3.2 phút', change: '+5s', changeColor: 'text-green-600' },
+                                totalLogin: { current: '2,654,180', previous: '2,489,750', change: '+6.6%', changeColor: 'text-green-600' }
+                            },
+                            dau: { labels: Array(90).fill('T').map((v, i) => v + (i+1)), data: Array(90).fill(0).map((_, i) => 200 + i * 3.5 + Math.sin(i / 5) * 20), previousData: Array(90).fill(0).map((_, i) => 180 + i * 3.4 + Math.sin(i / 5) * 15) },
+                            txVolume: { labels: Array(90).fill('T').map((v, i) => v + (i+1)), data: Array(90).fill(0).map((_, i) => 0.5 + i * 0.02 + Math.sin(i / 6) * 0.1), previousData: Array(90).fill(0).map((_, i) => 0.4 + i * 0.019 + Math.sin(i / 6) * 0.09) },
+                            onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [65000, 50000, 48000, 33000, 31000], previousData: [62000, 48000, 46000, 31000, 29000] },
+                            acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [42, 28, 18, 12], previousData: [40, 30, 18, 12] },
+                            onboardingByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [25500, 18600, 9300, 8400, 4800], previousData: [23400, 17100, 8700, 7800, 4200] },
+                            onboardingByCampaign: { labels: ['Summer Sale', 'New User Bonus', 'Referral Program', 'Holiday Promo', 'Khác'], data: [12600, 11400, 8700, 6300, 5400], previousData: [11700, 10500, 8100, 5700, 4900] },
+                            txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.2, 0.8], previousData: [99.1, 0.9] },
+                            txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [40, 30, 15, 10, 5], previousData: [42, 28, 15, 10, 5] },
+                            topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [30.1, 15.2, 9.8, 5.5, 4.5], previousData: [28.0, 14.1, 8.5, 5.0, 4.0] },
+                            txByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [25.5, 18.6, 9.3, 8.4, 4.8], previousData: [23.4, 17.1, 8.7, 7.8, 4.2] },
+                            stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [15, 16, 17, 18, 19, 20, 19, 21, 22, 23, 22, 24], previousData: [14, 15, 16, 17, 18, 19, 18, 20, 21, 22, 21, 23] }
+                        },
+                        'all': {
+                            kpi: {
+                                mau: { current: '1.25M', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                newUsers: { current: '500,000', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                totalTx: { current: '150M', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                successRate: { current: '99.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                txSuccess: { current: '99.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                txRealtime: { current: '98.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                txFail: { current: '1.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                txCoreError: { current: '0.4%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                newTxCustomers: { current: '285,600', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                churn: { current: '5.0%', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                session: { current: '3.0 phút', previous: '', change: 'N/A', changeColor: 'text-gray-500' },
+                                totalLogin: { current: '12,450,890', previous: '', change: 'N/A', changeColor: 'text-gray-500' }
+                            },
+                            dau: { labels: Array(365).fill('T').map((v, i) => v + (i+1)), data: Array(365).fill(0).map((_, i) => 100 + i * 1.2 + Math.sin(i / 10) * 30) },
+                            txVolume: { labels: Array(365).fill('T').map((v, i) => v + (i+1)), data: Array(365).fill(0).map((_, i) => 0.2 + i * 0.006 + Math.sin(i / 12) * 0.1) },
+                            onboarding: { labels: ['Truy cập App', 'Bắt đầu ĐK', 'Xác thực OTP', 'eKYC', 'Hoàn thành'], data: [250000, 200000, 190000, 140000, 130000] },
+                            acquisition: { labels: ['eskyone', 'S3', 'Partner', 'Counter'], data: [50, 20, 20, 10] },
+                            onboardingByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [119500, 87200, 43600, 39200, 22400] },
+                            onboardingByCampaign: { labels: ['Summer Sale', 'New User Bonus', 'Referral Program', 'Holiday Promo', 'Khác'], data: [58800, 53200, 40600, 29400, 25200] },
+                            txSuccessFail: { labels: ['Thành công', 'Thất bại'], data: [99.0, 1.0] },
+                            txFailReason: { labels: ['Lỗi Core Bank', 'Timeout hệ thống', 'Sai thông tin', 'Lỗi kết nối', 'Hết hạn GD'], data: [42, 28, 15, 10, 5] },
+                            topTxType: { labels: ['Chuyển khoản', 'Thanh toán HĐ', 'Nạp tiền ĐT', 'Quét QR', 'Tiết kiệm'], data: [70.5, 30.1, 20.2, 15.1, 14.1] },
+                            txByRegion: { labels: ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Khác'], data: [119.5, 87.2, 43.6, 39.2, 22.4] },
+                            stickiness: { labels: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'], data: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] }
+                        }
+                    };
+
+                    let chartInstances = {};
+
+                    const modal = document.getElementById('gemini-modal');
+                    const modalClose = document.getElementById('modal-close');
+                    const modalTitle = document.getElementById('modal-title');
+                    const modalLoader = document.getElementById('modal-loader');
+                    const modalResult = document.getElementById('modal-result');
+
+                    function showModal(title) {
+                        modalTitle.textContent = title;
+                        modalLoader.style.display = 'flex';
+                        modalResult.style.display = 'none';
+                        modal.style.display = 'flex';
+                    }
+
+                    function hideModal() {
+                        modal.style.display = 'none';
+                    }
+
+                    function setModalResult(content) {
+                        modalLoader.style.display = 'none';
+                        modalResult.innerHTML = content;
+                        modalResult.style.display = 'block';
+                    }
+
+                    function setModalError(error) {
+                        modalLoader.style.display = 'none';
+                        modalResult.innerHTML = `<div class="text-red-600 p-4 bg-red-100 rounded"><b>Lỗi:</b> ${error}</div>`;
+                        modalResult.style.display = 'block';
+                    }
+
+                    modalClose.addEventListener('click', hideModal);
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) hideModal();
+                    });
+
+                    async function callGemini(prompt, retries = 3, delay = 1000) {
+                        const apiKey = ""; 
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+                        const payload = {
+                            contents: [{ parts: [{ text: prompt }] }],
+                            systemInstruction: {
+                                parts: [{ text: "Bạn là chuyên gia phân tích dữ liệu mảng ngân hàng số. Hãy trả lời bằng tiếng Việt, phân tích sâu, chuyên nghiệp, và đưa ra các đề xuất hành động (actionable insights) cụ thể, đánh số từng mục." }]
+                            },
+                        };
+
+                        for (let i = 0; i < retries; i++) {
+                            try {
+                                const response = await fetch(apiUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                });
+
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+
+                                const result = await response.json();
+                                const candidate = result.candidates?.[0];
+
+                                if (candidate && candidate.content?.parts?.[0]?.text) {
+                                    return candidate.content.parts[0].text;
+                                } else {
+                                    throw new Error("Phản hồi từ API không hợp lệ hoặc không chứa nội dung.");
+                                }
+                            } catch (error) {
+                                if (i === retries - 1) {
+                                    throw error;
+                                }
+                                await new Promise(res => setTimeout(res, delay * (i + 1)));
+                            }
+                        }
+                    }
+
+                    const chartOptions = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeInOutQuart'
+                        },
                         plugins: {
                             datalabels: {
-                                display: (data.dau.labels.length < 31), // Chỉ hiển thị nếu ít dữ liệu
-                                anchor: 'end',
-                                align: 'top',
-                                color: '#6b7280',
-                                font: {
-                                    weight: 'bold',
-                                    size: 10
+                                display: false,
+                            },
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    boxWidth: 12,
+                                    padding: 16,
+                                    font: {
+                                        size: 13
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                enabled: true,
+                                backgroundColor: 'rgba(0,0,0,0.85)',
+                                titleFont: { size: 14, weight: 'bold' },
+                                bodyFont: { size: 12 },
+                                padding: 12,
+                                cornerRadius: 8,
+                                displayColors: true,
+                                boxPadding: 4,
+                                caretSize: 6,
+                                caretPadding: 10,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        let value = context.parsed.y;
+                                        if (context.parsed.x !== null && context.chart.options.indexAxis === 'y') {
+                                            value = context.parsed.x;
+                                        }
+
+                                        if (value !== null) {
+                                            if (context.chart.canvas.id.includes('Funnel')) {
+                                                label = (context.dataset.label || '') + ': ' + value.toLocaleString('vi-VN') + ' users';
+                                            } else if (context.chart.canvas.id.includes('SuccessFail') || context.chart.canvas.id.includes('Acquisition') || context.chart.canvas.id.includes('txFailReason')) {
+                                                label = (context.dataset.label || '') + ': ' + value + '%';
+                                            } else if (context.chart.canvas.id.includes('stickiness')) {
+                                                label = (context.dataset.label || '') + ': ' + value + '%';
+                                            } else if (context.chart.canvas.id.includes('topTxType') || context.chart.canvas.id.includes('txVolume')) {
+                                                label = (context.dataset.label || '') + ': ' + value + 'M';
+                                            } else {
+                                                label += value;
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false,
+                                    borderColor: 'rgba(0, 0, 0, 0.05)'
                                 },
-                                formatter: (value) => value + 'M'
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    },
+                                    callback: function(value, index, ticks) {
+                                        const label = this.getLabelForValue(value);
+                                        if (label.length > 10) {
+                                            return label.substring(0, 10) + '...';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.05)',
+                                    borderDash: [3, 3]
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 11
+                                    }
+                                }
                             }
                         }
-                    });
-                }
-            }
-
-            function initOnboardingCharts(data) {
-                const funnelCtx = document.getElementById('onboardingFunnelChart');
-                if (funnelCtx) {
-                    const datasets = [{
-                        label: 'Số lượng (Kỳ này)',
-                        data: data.onboarding.data,
-                        backgroundColor: '#4f46e5',
-                        borderRadius: 6,
-                        maxBarThickness: 70
-                    }];
-
-                    if (data.onboarding.previousData) {
-                        datasets.push({
-                            label: 'Số lượng (Kỳ trước)',
-                            data: data.onboarding.previousData,
-                            backgroundColor: '#a5b4fc',
-                            borderRadius: 6,
-                            maxBarThickness: 70
+                    };
+                    
+                    function createChart(ctx, type, data, options) {
+                        const id = ctx.canvas.id;
+                        if (chartInstances[id]) {
+                            chartInstances[id].destroy();
+                        }
+                        chartInstances[id] = new Chart(ctx, { 
+                            type, 
+                            data, 
+                            options: { ...chartOptions, ...options }
                         });
                     }
-                    
-                    createChart(funnelCtx.getContext('2d'), 'bar', {
-                        labels: data.onboarding.labels,
-                        datasets: datasets
-                    }, { 
-                        plugins: { 
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                color: '#6b7280',
-                                font: {
-                                    weight: 'bold',
-                                    size: 11
-                                },
-                                formatter: (value) => value.toLocaleString('vi-VN')
+
+                    function updateKPIs(data) {
+                        // data is chartData[period].kpi
+                        for (const [key, values] of Object.entries(data)) {
+                            // key = 'mau', 'newUsers', etc.
+                            // values = { current: '...', previous: '...', change: '...', changeColor: '...' }
+
+                            const currentEl = document.getElementById(`kpi-${key}-current`);
+                            const changeEl = document.getElementById(`kpi-${key}-change`);
+                            const previousEl = document.getElementById(`kpi-${key}-previous`);
+
+                            if (currentEl) currentEl.textContent = values.current;
+                            if (changeEl) {
+                                changeEl.textContent = values.change;
+                                changeEl.className = `kpi-change ${values.changeColor}`;
                             }
-                        },
-                        scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
-                    });
-                }
-
-                const acquisitionCtx = document.getElementById('acquisitionChannelChart');
-                if (acquisitionCtx) {
-                    const datasets = [{
-                        label: 'Tỷ lệ (Kỳ này)',
-                        data: data.acquisition.data,
-                        backgroundColor: '#4f46e5',
-                        borderRadius: 6,
-                        maxBarThickness: 70
-                    }];
-
-                    if (data.acquisition.previousData) {
-                        datasets.push({
-                            label: 'Tỷ lệ (Kỳ trước)',
-                            data: data.acquisition.previousData,
-                            backgroundColor: '#a5b4fc',
-                            borderRadius: 6,
-                            maxBarThickness: 70
-                        });
-                    }
-                    
-                    createChart(acquisitionCtx.getContext('2d'), 'bar', {
-                        labels: data.acquisition.labels,
-                        datasets: datasets
-                    }, { 
-                        plugins: { 
-                            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%` }},
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                color: '#6b7280',
-                                font: {
-                                    weight: 'bold',
-                                    size: 11
-                                },
-                                formatter: (value) => value + '%'
+                            if (previousEl) {
+                                if (values.previous) {
+                                    previousEl.textContent = `vs ${values.previous}`;
+                                } else {
+                                    previousEl.textContent = ''; // Clear it if no previous value (e.g., 'all' time)
+                                }
                             }
-                        },
-                        scales: { y: { ticks: { callback: (val) => val + '%' } } }
-                    });
-                }
-            }
-
-            function initTransactionCharts(data) {
-                const successCtx = document.getElementById('txSuccessFailChart');
-                if (successCtx) {
-                     const datasets = [{
-                        label: 'Tỷ lệ (Kỳ này)',
-                        data: data.txSuccessFail.data,
-                        backgroundColor: ['#4f46e5', '#e11d48'],
-                        borderRadius: 6,
-                        maxBarThickness: 70
-                    }];
-
-                    if (data.txSuccessFail.previousData) {
-                        datasets.push({
-                            label: 'Tỷ lệ (Kỳ trước)',
-                            data: data.txSuccessFail.previousData,
-                            backgroundColor: ['#a5b4fc', '#f87171'],
-                            borderRadius: 6,
-                            maxBarThickness: 70
-                        });
+                        }
                     }
-                    
-                    createChart(successCtx.getContext('2d'), 'bar', {
-                        labels: data.txSuccessFail.labels,
-                        datasets: datasets
-                    }, { 
-                        plugins: { 
-                            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%` }},
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                color: '#6b7280',
-                                font: {
-                                    weight: 'bold',
-                                    size: 11
-                                },
-                                formatter: (value) => value + '%'
+
+                    function initOverviewCharts(data) {
+                        const dauCtx = document.getElementById('dauChart');
+                        if (dauCtx) {
+                            const datasets = [{
+                                label: 'DAU (Kỳ này)',
+                                data: data.dau.data,
+                                borderColor: '#4f46e5',
+                                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                                fill: true,
+                                tension: 0.1,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#4f46e5',
+                                pointBorderColor: '#fff',
+                                pointHoverBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#3730a3'
+                            }];
+
+                            if (data.dau.previousData) {
+                                datasets.push({
+                                    label: 'DAU (Kỳ trước)',
+                                    data: data.dau.previousData,
+                                    borderColor: '#a5b4fc', // Lighter indigo
+                                    backgroundColor: 'transparent',
+                                    fill: false,
+                                    tension: 0.1,
+                                    pointRadius: 2,
+                                    pointHoverRadius: 4,
+                                    borderDash: [5, 5], // Dashed line
+                                    pointBackgroundColor: '#a5b4fc',
+                                    pointBorderColor: '#fff',
+                                    pointHoverBorderColor: '#fff',
+                                    pointHoverBackgroundColor: '#818cf8'
+                                });
                             }
-                        },
-                        scales: { y: { ticks: { callback: (val) => val + '%' } } }
-                    });
-                }
 
-                const failCtx = document.getElementById('txFailReasonChart');
-                if (failCtx) {
-                    const datasets = [{
-                        label: 'Tỷ lệ (Kỳ này)',
-                        data: data.txFailReason.data,
-                        backgroundColor: '#e11d48',
-                        borderRadius: 6,
-                        maxBarThickness: 50
-                    }];
-                    
-                    if (data.txFailReason.previousData) {
-                        datasets.push({
-                            label: 'Tỷ lệ (Kỳ trước)',
-                            data: data.txFailReason.previousData,
-                            backgroundColor: '#f87171',
-                            borderRadius: 6,
-                            maxBarThickness: 50
-                        });
-                    }
-                    
-                    createChart(failCtx.getContext('2d'), 'bar', {
-                        labels: data.txFailReason.labels,
-                        datasets: datasets
-                    }, { 
-                        indexAxis: 'y', 
-                        plugins: { 
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'end',
-                                padding: { left: 4 },
-                                color: '#374151',
-                                font: {
-                                    weight: 'bold',
-                                    size: 11
-                                },
-                                formatter: (value) => value + '%'
+                            createChart(dauCtx.getContext('2d'), 'line', {
+                                labels: data.dau.labels,
+                                datasets: datasets
+                            }, {});
+                        }
+
+                        const txVolumeCtx = document.getElementById('txVolumeChart');
+                        if (txVolumeCtx) {
+                            const datasets = [{
+                                label: 'SL Giao dịch (Kỳ này)',
+                                data: data.txVolume.data,
+                                backgroundColor: '#4f46e5',
+                                borderRadius: 6,
+                                maxBarThickness: 50
+                            }];
+
+                            if (data.txVolume.previousData) {
+                                datasets.push({
+                                    label: 'SL Giao dịch (Kỳ trước)',
+                                    data: data.txVolume.previousData,
+                                    backgroundColor: '#a5b4fc', // Lighter indigo
+                                    borderRadius: 6,
+                                    maxBarThickness: 50
+                                });
                             }
-                        },
-                        scales: { y: { ticks: { font: { size: 10 } } }, x: { ticks: { callback: (val) => val + '%' } } }
-                    });
-                }
-
-                const topTxCtx = document.getElementById('topTxTypeChart');
-                if (topTxCtx) {
-                     const datasets = [{
-                        label: 'SL Giao dịch (Kỳ này)',
-                        data: data.topTxType.data,
-                        backgroundColor: '#3730a3',
-                        borderRadius: 6,
-                        maxBarThickness: 50
-                    }];
-
-                    if (data.topTxType.previousData) {
-                        datasets.push({
-                            label: 'SL Giao dịch (Kỳ trước)',
-                            data: data.topTxType.previousData,
-                            backgroundColor: '#818cf8',
-                            borderRadius: 6,
-                            maxBarThickness: 50
-                        });
+                            
+                            createChart(txVolumeCtx.getContext('2d'), 'bar', {
+                                labels: data.txVolume.labels,
+                                datasets: datasets
+                            }, {
+                                plugins: {
+                                    datalabels: {
+                                        display: (data.dau.labels.length < 31), // Chỉ hiển thị nếu ít dữ liệu
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 10
+                                        },
+                                        formatter: (value) => value + 'M'
+                                    }
+                                }
+                            });
+                        }
                     }
-                    
-                    createChart(topTxCtx.getContext('2d'), 'bar', {
-                        labels: data.topTxType.labels,
-                        datasets: datasets
-                    }, { 
-                        plugins: { 
-                            datalabels: {
-                                display: true,
-                                anchor: 'end',
-                                align: 'top',
-                                color: '#6b7280',
-                                font: {
-                                    weight: 'bold',
-                                    size: 11
-                                },
-                                formatter: (value) => value + 'M'
+
+                    function initOnboardingCharts(data) {
+                        const funnelCtx = document.getElementById('onboardingFunnelChart');
+                        if (funnelCtx) {
+                            const datasets = [{
+                                label: 'Số lượng (Kỳ này)',
+                                data: data.onboarding.data,
+                                backgroundColor: '#4f46e5',
+                                borderRadius: 6,
+                                maxBarThickness: 70
+                            }];
+
+                            if (data.onboarding.previousData) {
+                                datasets.push({
+                                    label: 'Số lượng (Kỳ trước)',
+                                    data: data.onboarding.previousData,
+                                    backgroundColor: '#a5b4fc',
+                                    borderRadius: 6,
+                                    maxBarThickness: 70
+                                });
                             }
-                        },
-                        scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
-                    });
-                }
-            }
+                            
+                            createChart(funnelCtx.getContext('2d'), 'bar', {
+                                labels: data.onboarding.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value.toLocaleString('vi-VN')
+                                    }
+                                },
+                                scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
+                            });
+                        }
 
-            function initEngagementCharts(data) {
-                const stickinessCtx = document.getElementById('stickinessChart');
-                if (stickinessCtx) {
-                    const datasets = [{
-                        label: 'Tỷ lệ (Kỳ này)',
-                        data: data.stickiness.data,
-                        borderColor: '#f7b731',
-                        backgroundColor: 'rgba(247, 183, 49, 0.1)',
-                        fill: true,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: '#f7b731',
-                        pointBorderColor: '#fff',
-                        pointHoverBorderColor: '#fff',
-                        pointHoverBackgroundColor: '#d99a0b'
-                    }];
-                    
-                    if (data.stickiness.previousData) {
-                        datasets.push({
-                            label: 'Tỷ lệ (Kỳ trước)',
-                            data: data.stickiness.previousData,
-                            borderColor: '#fbbf24', // Lighter yellow
-                            backgroundColor: 'transparent',
-                            fill: false,
-                            tension: 0.1,
-                            pointRadius: 2,
-                            pointHoverRadius: 4,
-                            borderDash: [5, 5], // Dashed line
-                            pointBackgroundColor: '#fbbf24',
-                            pointBorderColor: '#fff',
-                            pointHoverBorderColor: '#fff',
-                            pointHoverBackgroundColor: '#f59e0b'
-                        });
+                        const acquisitionCtx = document.getElementById('acquisitionChannelChart');
+                        if (acquisitionCtx) {
+                            const datasets = [{
+                                label: 'Tỷ lệ (Kỳ này)',
+                                data: data.acquisition.data,
+                                backgroundColor: '#4f46e5',
+                                borderRadius: 6,
+                                maxBarThickness: 70
+                            }];
+
+                            if (data.acquisition.previousData) {
+                                datasets.push({
+                                    label: 'Tỷ lệ (Kỳ trước)',
+                                    data: data.acquisition.previousData,
+                                    backgroundColor: '#a5b4fc',
+                                    borderRadius: 6,
+                                    maxBarThickness: 70
+                                });
+                            }
+                            
+                            createChart(acquisitionCtx.getContext('2d'), 'bar', {
+                                labels: data.acquisition.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%` }},
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value + '%'
+                                    }
+                                },
+                                scales: { y: { ticks: { callback: (val) => val + '%' } } }
+                            });
+                        }
+
+                        const onboardingRegionCtx = document.getElementById('onboardingByRegionChart');
+                        if (onboardingRegionCtx) {
+                            const datasets = [{
+                                label: 'Số lượng (Kỳ này)',
+                                data: data.onboardingByRegion.data,
+                                backgroundColor: '#7c3aed',
+                                borderRadius: 6,
+                                maxBarThickness: 70
+                            }];
+
+                            if (data.onboardingByRegion.previousData) {
+                                datasets.push({
+                                    label: 'Số lượng (Kỳ trước)',
+                                    data: data.onboardingByRegion.previousData,
+                                    backgroundColor: '#a78bfa',
+                                    borderRadius: 6,
+                                    maxBarThickness: 70
+                                });
+                            }
+                            
+                            createChart(onboardingRegionCtx.getContext('2d'), 'bar', {
+                                labels: data.onboardingByRegion.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value.toLocaleString('vi-VN')
+                                    }
+                                },
+                                scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
+                            });
+                        }
+
+                        const onboardingCampaignCtx = document.getElementById('onboardingByCampaignChart');
+                        if (onboardingCampaignCtx) {
+                            const datasets = [{
+                                label: 'Số lượng (Kỳ này)',
+                                data: data.onboardingByCampaign.data,
+                                backgroundColor: '#dc2626',
+                                borderRadius: 6,
+                                maxBarThickness: 70
+                            }];
+
+                            if (data.onboardingByCampaign.previousData) {
+                                datasets.push({
+                                    label: 'Số lượng (Kỳ trước)',
+                                    data: data.onboardingByCampaign.previousData,
+                                    backgroundColor: '#f87171',
+                                    borderRadius: 6,
+                                    maxBarThickness: 70
+                                });
+                            }
+                            
+                            createChart(onboardingCampaignCtx.getContext('2d'), 'bar', {
+                                labels: data.onboardingByCampaign.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value.toLocaleString('vi-VN')
+                                    }
+                                },
+                                scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
+                            });
+                        }
+                    }
+
+                    function initTransactionCharts(data) {
+                        const successCtx = document.getElementById('txSuccessFailChart');
+                        if (successCtx) {
+                            const datasets = [{
+                                label: 'Tỷ lệ (Kỳ này)',
+                                data: data.txSuccessFail.data,
+                                backgroundColor: ['#4f46e5', '#e11d48'],
+                                borderRadius: 6,
+                                maxBarThickness: 70
+                            }];
+
+                            if (data.txSuccessFail.previousData) {
+                                datasets.push({
+                                    label: 'Tỷ lệ (Kỳ trước)',
+                                    data: data.txSuccessFail.previousData,
+                                    backgroundColor: ['#a5b4fc', '#f87171'],
+                                    borderRadius: 6,
+                                    maxBarThickness: 70
+                                });
+                            }
+                            
+                            createChart(successCtx.getContext('2d'), 'bar', {
+                                labels: data.txSuccessFail.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%` }},
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value + '%'
+                                    }
+                                },
+                                scales: { y: { ticks: { callback: (val) => val + '%' } } }
+                            });
+                        }
+
+                        const failCtx = document.getElementById('txFailReasonChart');
+                        if (failCtx) {
+                            const datasets = [{
+                                label: 'Tỷ lệ (Kỳ này)',
+                                data: data.txFailReason.data,
+                                backgroundColor: '#e11d48',
+                                borderRadius: 6,
+                                maxBarThickness: 50
+                            }];
+                            
+                            if (data.txFailReason.previousData) {
+                                datasets.push({
+                                    label: 'Tỷ lệ (Kỳ trước)',
+                                    data: data.txFailReason.previousData,
+                                    backgroundColor: '#f87171',
+                                    borderRadius: 6,
+                                    maxBarThickness: 50
+                                });
+                            }
+                            
+                            createChart(failCtx.getContext('2d'), 'bar', {
+                                labels: data.txFailReason.labels,
+                                datasets: datasets
+                            }, { 
+                                indexAxis: 'y', 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'end',
+                                        padding: { left: 4 },
+                                        color: '#374151',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value + '%'
+                                    }
+                                },
+                                scales: { y: { ticks: { font: { size: 10 } } }, x: { ticks: { callback: (val) => val + '%' } } }
+                            });
+                        }
+
+                        const topTxCtx = document.getElementById('topTxTypeChart');
+                        if (topTxCtx) {
+                            const datasets = [{
+                                label: 'SL Giao dịch (Kỳ này)',
+                                data: data.topTxType.data,
+                                backgroundColor: '#3730a3',
+                                borderRadius: 6,
+                                maxBarThickness: 50
+                            }];
+
+                            if (data.topTxType.previousData) {
+                                datasets.push({
+                                    label: 'SL Giao dịch (Kỳ trước)',
+                                    data: data.topTxType.previousData,
+                                    backgroundColor: '#818cf8',
+                                    borderRadius: 6,
+                                    maxBarThickness: 50
+                                });
+                            }
+                            
+                            createChart(topTxCtx.getContext('2d'), 'bar', {
+                                labels: data.topTxType.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value + 'M'
+                                    }
+                                },
+                                scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
+                            });
+                        }
+
+                        const txRegionCtx = document.getElementById('txByRegionChart');
+                        if (txRegionCtx) {
+                            const datasets = [{
+                                label: 'SL Giao dịch (Kỳ này)',
+                                data: data.txByRegion.data,
+                                backgroundColor: '#059669',
+                                borderRadius: 6,
+                                maxBarThickness: 50
+                            }];
+
+                            if (data.txByRegion.previousData) {
+                                datasets.push({
+                                    label: 'SL Giao dịch (Kỳ trước)',
+                                    data: data.txByRegion.previousData,
+                                    backgroundColor: '#10b981',
+                                    borderRadius: 6,
+                                    maxBarThickness: 50
+                                });
+                            }
+                            
+                            createChart(txRegionCtx.getContext('2d'), 'bar', {
+                                labels: data.txByRegion.labels,
+                                datasets: datasets
+                            }, { 
+                                plugins: { 
+                                    datalabels: {
+                                        display: true,
+                                        anchor: 'end',
+                                        align: 'top',
+                                        color: '#6b7280',
+                                        font: {
+                                            weight: 'bold',
+                                            size: 11
+                                        },
+                                        formatter: (value) => value + 'M'
+                                    }
+                                },
+                                scales: { x: { ticks: { callback: function(val) { return wrapLabel(this.getLabelForValue(val), 16); } }}}
+                            });
+                        }
+                    }
+
+                    function initEngagementCharts(data) {
+                        const stickinessCtx = document.getElementById('stickinessChart');
+                        if (stickinessCtx) {
+                            const datasets = [{
+                                label: 'Tỷ lệ (Kỳ này)',
+                                data: data.stickiness.data,
+                                borderColor: '#f7b731',
+                                backgroundColor: 'rgba(247, 183, 49, 0.1)',
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#f7b731',
+                                pointBorderColor: '#fff',
+                                pointHoverBorderColor: '#fff',
+                                pointHoverBackgroundColor: '#d99a0b'
+                            }];
+                            
+                            if (data.stickiness.previousData) {
+                                datasets.push({
+                                    label: 'Tỷ lệ (Kỳ trước)',
+                                    data: data.stickiness.previousData,
+                                    borderColor: '#fbbf24', // Lighter yellow
+                                    backgroundColor: 'transparent',
+                                    fill: false,
+                                    tension: 0.1,
+                                    pointRadius: 2,
+                                    pointHoverRadius: 4,
+                                    borderDash: [5, 5], // Dashed line
+                                    pointBackgroundColor: '#fbbf24',
+                                    pointBorderColor: '#fff',
+                                    pointHoverBorderColor: '#fff',
+                                    pointHoverBackgroundColor: '#f59e0b'
+                                });
+                            }
+                            
+                            createChart(stickinessCtx.getContext('2d'), 'line', {
+                                labels: data.stickiness.labels,
+                                datasets: datasets
+                            }, { 
+                                scales: { y: { ticks: { callback: (val) => val + '%' } } }
+                            });
+                        }
                     }
                     
-                    createChart(stickinessCtx.getContext('2d'), 'line', {
-                        labels: data.stickiness.labels,
-                        datasets: datasets
-                    }, { 
-                        scales: { y: { ticks: { callback: (val) => val + '%' } } }
-                    });
-                }
-            }
-            
-            function wrapLabel(label, maxWidth) {
-                if (label.length <= maxWidth) return label;
-                let parts = label.split(' ');
-                let lines = [];
-                let currentLine = '';
-                parts.forEach(part => {
-                    if ((currentLine + part).length > maxWidth) {
+                    function wrapLabel(label, maxWidth) {
+                        if (label.length <= maxWidth) return label;
+                        let parts = label.split(' ');
+                        let lines = [];
+                        let currentLine = '';
+                        parts.forEach(part => {
+                            if ((currentLine + part).length > maxWidth) {
+                                lines.push(currentLine.trim());
+                                currentLine = part + ' ';
+                            } else {
+                                currentLine += part + ' ';
+                            }
+                        });
                         lines.push(currentLine.trim());
-                        currentLine = part + ' ';
-                    } else {
-                        currentLine += part + ' ';
+                        return lines;
                     }
+
+                    function updateDashboard(period) {
+                        const data = chartData[period];
+                        if (!data) return;
+
+                        // Hủy tất cả chart cũ
+                        for (const id in chartInstances) {
+                            if (chartInstances[id]) {
+                                chartInstances[id].destroy();
+                            }
+                        }
+                        chartInstances = {};
+
+                        // Cập nhật KPIs
+                        updateKPIs(data.kpi);
+
+                        // Vẽ lại tất cả charts
+                        initOverviewCharts(data);
+                        initOnboardingCharts(data);
+                        initTransactionCharts(data);
+                        initEngagementCharts(data);
+                    }
+
+                    document.getElementById('date-filter').addEventListener('change', (e) => {
+                        updateDashboard(e.target.value);
+                    });
+
+                    // Initial load
+                    updateDashboard('30');
+
+                    // Gemini button listeners
+                    const analyzeOnboardingBtn = document.getElementById('analyze-onboarding');
+                    const analyzeFailuresBtn = document.getElementById('analyze-failures');
+                    const analyzeEngagementBtn = document.getElementById('analyze-engagement');
+
+                    analyzeOnboardingBtn.addEventListener('click', async () => {
+                        try {
+                            showModal('✨ Đang phân tích phễu...');
+                            const period = document.getElementById('date-filter').value;
+                            const data = chartData[period].onboarding;
+                            const prompt = `Phân tích phễu onboarding sau:\nKỳ này:\n${data.labels.map((l, i) => `${l}: ${data.data[i]}`).join('\n')}\nKỳ trước:\n${data.labels.map((l, i) => `${l}: ${data.previousData ? data.previousData[i] : 'N/A'}`).join('\n')}\nSo sánh 2 kỳ, đặc biệt chú ý đến điểm rơi lớn nhất và sự thay đổi. Đưa ra 3 đề xuất cụ thể để cải thiện.`;
+                            const result = await callGemini(prompt);
+                            setModalResult(result);
+                        } catch (error) {
+                            setModalError(`Lỗi phân tích: ${error.message}`);
+                        }
+                    });
+
+                    analyzeFailuresBtn.addEventListener('click', async () => {
+                        try {
+                            showModal('✨ Đang phân tích lỗi giao dịch...');
+                            const period = document.getElementById('date-filter').value;
+                            const data = chartData[period].txFailReason;
+                            const prompt = `Phân tích các lý do giao dịch thất bại (tính theo %):\nKỳ này:\n${data.labels.map((l, i) => `${l}: ${data.data[i]}%`).join('\n')}\nKỳ trước:\n${data.labels.map((l, i) => `${l}: ${data.previousData ? data.previousData[i] : 'N/A'}%`).join('\n')}\nNguyên nhân nào là nghiêm trọng nhất và có xu hướng tăng? Đưa ra 3 đề xuất cụ thể (bao gồm cả kỹ thuật và nghiệp vụ) để giảm tỷ lệ lỗi này.`;
+                            const result = await callGemini(prompt);
+                            setModalResult(result);
+                        } catch (error) {
+                            setModalError(`Lỗi phân tích: ${error.message}`);
+                        }
+                    });
+
+                    analyzeEngagementBtn.addEventListener('click', async () => {
+                        try {
+                            showModal('✨ Đang tìm gợi ý cải thiện...');
+                            const period = document.getElementById('date-filter').value;
+                            const data = chartData[period].stickiness;
+                            const kpiData = chartData[period].kpi;
+                            const prompt = `Phân tích các chỉ số tương tác:\n- Tỷ lệ DAU/MAU (Kỳ này): ${data.data.join(', ')}%\n- Tỷ lệ DAU/MAU (Kỳ trước): ${data.previousData ? data.previousData.join(', ') : 'N/A'}%\n- Churn Rate: ${kpiData.churn.current} (vs ${kpiData.churn.previous})\n- Avg Session Length: ${kpiData.session.current} (vs ${kpiData.session.previous})\nXu hướng chung là gì và đề xuất 3 chiến lược cụ thể để tăng 'stickiness' và giảm 'churn'.`;
+                            const result = await callGemini(prompt);
+                            setModalResult(result);
+                        } catch (error) {
+                            setModalError(`Lỗi phân tích: ${error.message}`);
+                        }
+                    });
+
+                    // Tab switching functionality
+                    window.switchTab = function(tabName) {
+                        // Hide all tab contents
+                        document.querySelectorAll('.tab-content').forEach(content => {
+                            content.classList.remove('active');
+                        });
+                        
+                        // Show selected tab content
+                        document.getElementById('content-' + tabName).classList.add('active');
+                        
+                        // Update tab button states
+                        document.querySelectorAll('.tab-button').forEach(button => {
+                            button.classList.remove('active');
+                            button.classList.add('inactive');
+                        });
+                        
+                        // Activate selected tab button
+                        document.getElementById('tab-' + tabName).classList.remove('inactive');
+                        document.getElementById('tab-' + tabName).classList.add('active');
+                        
+                        // Redraw charts for the active tab
+                        const period = document.getElementById('date-filter').value;
+                        const data = chartData[period];
+                        if (!data) return;
+
+                        // Small delay to ensure DOM is updated
+                        setTimeout(() => {
+                            if (tabName === 'overview') {
+                                initOverviewCharts(data);
+                            } else if (tabName === 'onboarding') {
+                                initOnboardingCharts(data);
+                            } else if (tabName === 'transaction') {
+                                initTransactionCharts(data);
+                            } else if (tabName === 'engagement') {
+                                initEngagementCharts(data);
+                            }
+                        }, 100);
+                    };
+
+                    // Update KPI function to handle tab-specific KPIs
+                    function updateTabKPIs(data) {
+                        // Update overview KPIs
+                        updateKPIs(data);
+                        
+                        // Update onboarding KPIs
+                        const onbElements = {
+                            'kpi-onb-newUsers-current': data.newUsers.current,
+                            'kpi-onb-newUsers-change': data.newUsers.change,
+                            'kpi-onb-newUsers-previous': data.newUsers.previous ? `vs ${data.newUsers.previous}` : '',
+                            'kpi-onb-conversion-current': '67.9%',
+                            'kpi-onb-conversion-change': '+2.1%',
+                            'kpi-onb-conversion-previous': 'vs 65.8%'
+                        };
+                        
+                        // Update transaction KPIs  
+                        const txElements = {
+                            'kpi-tx-txSuccess-current': data.txSuccess.current,
+                            'kpi-tx-txSuccess-change': data.txSuccess.change,
+                            'kpi-tx-txSuccess-previous': data.txSuccess.previous ? `vs ${data.txSuccess.previous}` : '',
+                            'kpi-tx-txRealtime-current': data.txRealtime.current,
+                            'kpi-tx-txRealtime-change': data.txRealtime.change,
+                            'kpi-tx-txRealtime-previous': data.txRealtime.previous ? `vs ${data.txRealtime.previous}` : '',
+                            'kpi-tx-txFail-current': data.txFail.current,
+                            'kpi-tx-txFail-change': data.txFail.change,
+                            'kpi-tx-txFail-previous': data.txFail.previous ? `vs ${data.txFail.previous}` : '',
+                            'kpi-tx-txCoreError-current': data.txCoreError.current,
+                            'kpi-tx-txCoreError-change': data.txCoreError.change,
+                            'kpi-tx-txCoreError-previous': data.txCoreError.previous ? `vs ${data.txCoreError.previous}` : '',
+                            'kpi-tx-newTxCustomers-current': data.newTxCustomers.current,
+                            'kpi-tx-newTxCustomers-change': data.newTxCustomers.change,
+                            'kpi-tx-newTxCustomers-previous': data.newTxCustomers.previous ? `vs ${data.newTxCustomers.previous}` : ''
+                        };
+                        
+                        // Update engagement KPIs
+                        const engElements = {
+                            'kpi-eng-churn-current': data.churn.current,
+                            'kpi-eng-churn-change': data.churn.change,
+                            'kpi-eng-churn-previous': data.churn.previous ? `vs ${data.churn.previous}` : '',
+                            'kpi-eng-session-current': data.session.current,
+                            'kpi-eng-session-change': data.session.change,
+                            'kpi-eng-session-previous': data.session.previous ? `vs ${data.session.previous}` : '',
+                            'kpi-eng-totalLogin-current': data.totalLogin.current,
+                            'kpi-eng-totalLogin-change': data.totalLogin.change,
+                            'kpi-eng-totalLogin-previous': data.totalLogin.previous ? `vs ${data.totalLogin.previous}` : ''
+                        };
+
+                        // Apply all updates
+                        [...Object.entries(onbElements), ...Object.entries(txElements), ...Object.entries(engElements)].forEach(([id, value]) => {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                if (id.includes('-change')) {
+                                    // Handle change color classes
+                                    const changeColor = data[id.split('-')[2]]?.changeColor || 'text-gray-500';
+                                    el.className = `kpi-change ${changeColor}`;
+                                    el.textContent = value;
+                                } else {
+                                    el.textContent = value;
+                                }
+                            }
+                        });
+                    }
+
+                    // Override the updateDashboard function to include tab KPIs
+                    function updateDashboard(period) {
+                        const data = chartData[period];
+                        if (!data) return;
+
+                        // Hủy tất cả chart cũ
+                        for (const id in chartInstances) {
+                            if (chartInstances[id]) {
+                                chartInstances[id].destroy();
+                            }
+                        }
+                        chartInstances = {};
+
+                        // Cập nhật tất cả KPIs
+                        updateTabKPIs(data.kpi);
+
+                        // Vẽ lại charts cho tab đang active
+                        const activeTab = document.querySelector('.tab-content.active').id.replace('content-', '');
+                        if (activeTab === 'overview') {
+                            initOverviewCharts(data);
+                        } else if (activeTab === 'onboarding') {
+                            initOnboardingCharts(data);
+                        } else if (activeTab === 'transaction') {
+                            initTransactionCharts(data);
+                        } else if (activeTab === 'engagement') {
+                            initEngagementCharts(data);
+                        }
+                    }
+
                 });
-                lines.push(currentLine.trim());
-                return lines;
-            }
-
-            function updateDashboard(period) {
-                const data = chartData[period];
-                if (!data) return;
-
-                // Hủy tất cả chart cũ
-                for (const id in chartInstances) {
-                    if (chartInstances[id]) {
-                        chartInstances[id].destroy();
-                    }
-                }
-                chartInstances = {};
-
-                // Cập nhật KPIs
-                updateKPIs(data.kpi);
-
-                // Vẽ lại tất cả charts
-                initOverviewCharts(data);
-                initOnboardingCharts(data);
-                initTransactionCharts(data);
-                initEngagementCharts(data);
-            }
-
-            document.getElementById('date-filter').addEventListener('change', (e) => {
-                updateDashboard(e.target.value);
-            });
-
-            // Initial load
-            updateDashboard('30');
-
-            // Gemini button listeners
-            const analyzeOnboardingBtn = document.getElementById('analyze-onboarding');
-            const analyzeFailuresBtn = document.getElementById('analyze-failures');
-            const analyzeEngagementBtn = document.getElementById('analyze-engagement');
-
-            analyzeOnboardingBtn.addEventListener('click', async () => {
-                try {
-                    showModal('✨ Đang phân tích phễu...');
-                    const period = document.getElementById('date-filter').value;
-                    const data = chartData[period].onboarding;
-                    const prompt = `Phân tích phễu onboarding sau:\nKỳ này:\n${data.labels.map((l, i) => `${l}: ${data.data[i]}`).join('\n')}\nKỳ trước:\n${data.labels.map((l, i) => `${l}: ${data.previousData ? data.previousData[i] : 'N/A'}`).join('\n')}\nSo sánh 2 kỳ, đặc biệt chú ý đến điểm rơi lớn nhất và sự thay đổi. Đưa ra 3 đề xuất cụ thể để cải thiện.`;
-                    const result = await callGemini(prompt);
-                    setModalResult(result);
-                } catch (error) {
-                    setModalError(`Lỗi phân tích: ${error.message}`);
-                }
-            });
-
-            analyzeFailuresBtn.addEventListener('click', async () => {
-                try {
-                    showModal('✨ Đang phân tích lỗi giao dịch...');
-                    const period = document.getElementById('date-filter').value;
-                    const data = chartData[period].txFailReason;
-                    const prompt = `Phân tích các lý do giao dịch thất bại (tính theo %):\nKỳ này:\n${data.labels.map((l, i) => `${l}: ${data.data[i]}%`).join('\n')}\nKỳ trước:\n${data.labels.map((l, i) => `${l}: ${data.previousData ? data.previousData[i] : 'N/A'}%`).join('\n')}\nNguyên nhân nào là nghiêm trọng nhất và có xu hướng tăng? Đưa ra 3 đề xuất cụ thể (bao gồm cả kỹ thuật và nghiệp vụ) để giảm tỷ lệ lỗi này.`;
-                    const result = await callGemini(prompt);
-                    setModalResult(result);
-                } catch (error) {
-                    setModalError(`Lỗi phân tích: ${error.message}`);
-                }
-            });
-
-            analyzeEngagementBtn.addEventListener('click', async () => {
-                try {
-                    showModal('✨ Đang tìm gợi ý cải thiện...');
-                    const period = document.getElementById('date-filter').value;
-                    const data = chartData[period].stickiness;
-                    const kpiData = chartData[period].kpi;
-                    const prompt = `Phân tích các chỉ số tương tác:\n- Tỷ lệ DAU/MAU (Kỳ này): ${data.data.join(', ')}%\n- Tỷ lệ DAU/MAU (Kỳ trước): ${data.previousData ? data.previousData.join(', ') : 'N/A'}%\n- Churn Rate: ${kpiData.churn.current} (vs ${kpiData.churn.previous})\n- Avg Session Length: ${kpiData.session.current} (vs ${kpiData.session.previous})\nXu hướng chung là gì và đề xuất 3 chiến lược cụ thể để tăng 'stickiness' và giảm 'churn'.`;
-                    const result = await callGemini(prompt);
-                    setModalResult(result);
-                } catch (error) {
-                    setModalError(`Lỗi phân tích: ${error.message}`);
-                }
-            });
-
-        });
-    </script>
-</body>
-</html>
+            </script>
+        </body>
+        </html>
 
